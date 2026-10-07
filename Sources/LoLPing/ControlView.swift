@@ -68,11 +68,9 @@ struct ControlView: View {
     private var settingsCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("触发组合键", systemImage: "keyboard").font(.system(size: 12))
+                Label("触发方式", systemImage: "keyboard").font(.system(size: 12))
                 Spacer()
-                Picker("触发组合键", selection: $model.chord) {
-                    ForEach(TriggerChord.allCases) { Text($0.title).tag($0) }
-                }.labelsHidden().frame(width: 320).accessibilityLabel("触发组合键")
+                Text("⌥ Option + 左键拖动").font(.system(size: 12)).foregroundStyle(Palette.gold)
             }
             HStack(spacing: 28) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -90,7 +88,9 @@ struct ControlView: View {
                     Slider(value: $model.scale, in: 0.75...1.5, step: 0.05).accessibilityLabel("效果大小")
                 }
             }
-            Text("按住 0.18 秒 → 移动选择 → 松开发送　 ·　 Esc / 右键取消")
+            Text("按住 Option → 左键拖动选择 → 松开左键发送")
+                .font(.system(size: 10)).foregroundStyle(Palette.secondary)
+            Text("Esc / 右键 / 提前松开 Option 取消。启用后会接管 Option + 左键拖动。")
                 .font(.system(size: 10)).foregroundStyle(Palette.secondary)
         }.padding(16).card()
     }

@@ -17,9 +17,10 @@ final class GlobalInput {
     var onUnavailable: (() -> Void)?
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
-    private var timer: Timer?
+    private var listening = false
     private var keysDown: Set<Int64> = []
     private var swallowedKeys: Set<Int64> = []
+    private var swallowedLeft = false
     private var swallowedRight = false
     private var recoveryAttempts = 0
 
@@ -29,12 +30,17 @@ final class GlobalInput {
         _ = AXIsProcessTrustedWithOptions(options)
     }
 
-    func start(chord: TriggerChord, scale: Double) throws {
+    func start(scale: Double) throws {
         stop()
         guard Self.isTrusted else { throw StartError.permission }
-        machine.chord = chord
         machine.deadZone = WheelGeometry.centerRadius*scale
-        machine.reset(blockUntilRelease: !Self.modifiers(CGEventSource.flagsState(.combinedSessionState)).intersection(chord.modifiers).isEmpty)
+        machine.reset(blockUntilRelease: CGEventSource.buttonState(.combinedSessionState, button: .left))
+        // A cancelled drag may still be draining its mouse-up after a restart.
+        if let tap {
+            listening = true
+            CGEvent.tapEnable(tap: tap, enable: true)
+            return
+        }
         let types: [CGEventType] = [.flagsChanged, .keyDown, .keyUp, .mouseMoved,
                                    .leftMouseDown, .leftMouseUp, .leftMouseDragged,
                                    .rightMouseDown, .rightMouseUp, .rightMouseDragged,
@@ -51,22 +57,30 @@ final class GlobalInput {
             throw StartError.eventTap
         }
         tap = newTap
+        listening = true
         source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, newTap, 0)
         if let source { CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes) }
         CGEvent.tapEnable(tap: newTap, enable: true)
     }
 
     func stop() {
-        timer?.invalidate(); timer = nil
+        listening = false
+        keysDown.removeAll(); recoveryAttempts = 0
+        machine.reset()
+        // If we swallowed a down event, also swallow its remaining drag/up.
+        // Disabling or changing size mid-drag must not leak it to other apps.
+        if !hasSwallowedInput { removeTap() }
+    }
+
+    private var hasSwallowedInput: Bool { swallowedLeft || swallowedRight || !swallowedKeys.isEmpty }
+
+    private func removeTap() {
         if let tap { CGEvent.tapEnable(tap: tap, enable: false); CFMachPortInvalidate(tap) }
         if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
         tap = nil; source = nil
-        keysDown.removeAll(); swallowedKeys.removeAll(); swallowedRight = false; recoveryAttempts = 0
-        machine.reset()
     }
 
     func cancelCurrent() {
-        timer?.invalidate(); timer = nil
         dispatch(machine.cancel())
     }
     func setWheelCenter(_ center: CGPoint) { dispatch(machine.setWheelCenter(center)) }
@@ -92,14 +106,14 @@ final class GlobalInput {
             return false
         }
         recoveryAttempts = 0
+        if !listening { return drain(type, event) }
         switch type {
         case .flagsChanged:
-            let held = NSEvent.pressedMouseButtons != 0 || !keysDown.isEmpty
-            dispatch(machine.flagsChanged(Self.modifiers(event.flags), at: point(event), otherInputHeld: held))
+            dispatch(machine.flagsChanged(Self.modifiers(event.flags)))
         case .keyDown:
             let key = event.getIntegerValueField(.keyboardEventKeycode)
             keysDown.insert(key)
-            let active = machine.phase == .arming || machine.phase == .open
+            let active = machine.phase == .open
             if swallowedKeys.contains(key) { return true }
             cancelCurrent()
             if active && key == 53 { swallowedKeys.insert(key); return true }
@@ -108,37 +122,56 @@ final class GlobalInput {
             keysDown.remove(key)
             if swallowedKeys.remove(key) != nil { return true }
         case .mouseMoved:
-            dispatch(machine.moved(to: point(event)))
+            break
+        case .leftMouseDown:
+            if swallowedLeft { return true }
+            let held = (NSEvent.pressedMouseButtons & ~1) != 0 || !keysDown.isEmpty
+            let actions = machine.leftMouseDown(Self.modifiers(event.flags), at: point(event), otherInputHeld: held)
+            swallowedLeft = machine.phase == .open
+            dispatch(actions)
+            return swallowedLeft
+        case .leftMouseDragged:
+            if swallowedLeft {
+                dispatch(machine.flagsChanged(Self.modifiers(event.flags)))
+                dispatch(machine.moved(to: point(event)))
+                return true
+            }
+        case .leftMouseUp:
+            let swallow = swallowedLeft
+            swallowedLeft = false
+            dispatch(machine.leftMouseUp(Self.modifiers(event.flags), at: point(event)))
+            return swallow
         case .rightMouseDown:
-            let active = machine.phase == .arming || machine.phase == .open
+            let active = machine.phase == .open
             cancelCurrent()
             if active { swallowedRight = true; return true }
         case .rightMouseUp:
             if swallowedRight { swallowedRight = false; return true }
         case .rightMouseDragged:
             if swallowedRight { return true }
-        case .leftMouseDown, .otherMouseDown, .leftMouseDragged, .otherMouseDragged, .scrollWheel:
+        case .otherMouseDown, .otherMouseDragged, .scrollWheel:
             cancelCurrent()
         default: break
         }
         return false
     }
-    private func dispatch(_ actions: [GestureMachine.Action]) {
-        for action in actions {
-            switch action {
-            case .arm:
-                timer?.invalidate()
-                let next = Timer(timeInterval: 0.18, repeats: false) { [weak self] _ in
-                    guard let self else { return }
-                    self.timer = nil
-                    self.dispatch(self.machine.delayElapsed())
-                }
-                timer = next; RunLoop.main.add(next, forMode: .common)
-            case .hide, .dismiss:
-                timer?.invalidate(); timer = nil
-                onAction?(action)
-            default: onAction?(action)
-            }
+
+    private func drain(_ type: CGEventType, _ event: CGEvent) -> Bool {
+        var swallow = false
+        switch type {
+        case .leftMouseDown, .leftMouseDragged: swallow = swallowedLeft
+        case .leftMouseUp: swallow = swallowedLeft; swallowedLeft = false
+        case .rightMouseDown, .rightMouseDragged: swallow = swallowedRight
+        case .rightMouseUp: swallow = swallowedRight; swallowedRight = false
+        case .keyDown: swallow = swallowedKeys.contains(event.getIntegerValueField(.keyboardEventKeycode))
+        case .keyUp: swallow = swallowedKeys.remove(event.getIntegerValueField(.keyboardEventKeycode)) != nil
+        default: break
         }
+        if !hasSwallowedInput { removeTap() }
+        return swallow
+    }
+
+    private func dispatch(_ actions: [GestureMachine.Action]) {
+        actions.forEach { onAction?($0) }
     }
 }

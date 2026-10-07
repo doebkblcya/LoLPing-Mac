@@ -6,9 +6,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var isEnabled = false
     @Published private(set) var awaitingPermission = false
     @Published private(set) var message = "全局信号已关闭。你仍可在下方预览效果。"
-    @Published var chord: TriggerChord {
-        didSet { defaults.set(chord.rawValue, forKey: "triggerChord"); restartInputIfNeeded() }
-    }
     @Published var volume: Double {
         didSet { defaults.set(volume, forKey: "volume") }
     }
@@ -29,7 +26,6 @@ final class AppModel: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        chord = TriggerChord(rawValue: defaults.string(forKey: "triggerChord") ?? "") ?? .controlOptionCommand
         volume = defaults.object(forKey: "volume") == nil ? 0.55 : min(max(defaults.double(forKey: "volume"), 0), 1)
         scale = defaults.object(forKey: "effectScale") == nil ? 1 : min(max(defaults.double(forKey: "effectScale"), 0.75), 1.5)
         input.onAction = { [weak self] action in self?.handle(action) }
@@ -72,11 +68,11 @@ final class AppModel: ObservableObject {
             return
         }
         do {
-            try input.start(chord: chord, scale: scale)
+            try input.start(scale: scale)
             isEnabled = true; awaitingPermission = false
             permissionTimer?.invalidate(); permissionTimer = nil
             defaults.set(true, forKey: "enabled")
-            message = "已就绪。按住 \(chord.symbols)，移动选择，松开发送。"
+            message = "已就绪。按住 Option（⌥）并左键拖动，松开左键发送。"
         } catch {
             isEnabled = false; awaitingPermission = false
             permissionTimer?.invalidate(); permissionTimer = nil
@@ -128,7 +124,6 @@ final class AppModel: ObservableObject {
         case .commit(let kind, let anchor):
             overlay.showPing(kind, at: anchor, scale: scale)
             sound.play(kind, volume: volume)
-        case .arm: break
         }
     }
 }

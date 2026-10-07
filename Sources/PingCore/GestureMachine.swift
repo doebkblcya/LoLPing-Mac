@@ -3,47 +3,51 @@ import CoreGraphics
 
 /// Pure state machine. Platform code handles clocks, permissions and rendering.
 public final class GestureMachine {
-    public enum Phase: Equatable { case idle, arming, open, blocked }
+    public enum Phase: Equatable { case idle, open, blocked }
     public enum Action: Equatable {
-        case arm(CGPoint), show(CGPoint), hover(PingKind, angle: CGFloat?), hide, dismiss, commit(PingKind, CGPoint)
+        case show(CGPoint), hover(PingKind, angle: CGFloat?), hide, dismiss, commit(PingKind, CGPoint)
     }
     public private(set) var phase: Phase = .idle
     public private(set) var selected: PingKind = .generic
     public private(set) var anchor: CGPoint = .zero
     public private(set) var currentModifiers: Modifiers = []
-    public var chord: TriggerChord = .controlOptionCommand
     public var deadZone: CGFloat = WheelGeometry.centerRadius
     private var center: CGPoint = .zero
     private var pointer: CGPoint = .zero
     public init() {}
 
-    public func flagsChanged(_ flags: Modifiers, at point: CGPoint, otherInputHeld: Bool) -> [Action] {
+    public func flagsChanged(_ flags: Modifiers) -> [Action] {
         currentModifiers = flags
-        if phase == .blocked {
-            if flags.intersection(chord.modifiers).isEmpty { phase = .idle }
-            return []
-        }
-        if phase == .idle {
-            guard flags == chord.modifiers else { return [] }
-            guard !otherInputHeld else { phase = .blocked; return [] }
-            anchor = point; center = point; pointer = point; selected = .generic
-            phase = .arming
-            return [.arm(point)]
-        }
-        // Adding a fourth modifier is a different shortcut, never a commit.
-        if !flags.subtracting(chord.modifiers).isEmpty { return cancel() }
-        if flags != chord.modifiers {
-            let wasOpen = phase == .open
-            phase = flags.intersection(chord.modifiers).isEmpty ? .idle : .blocked
-            return wasOpen ? [.dismiss, .commit(selected, anchor)] : [.hide]
-        }
+        // Option alone does nothing. Releasing it or adding another modifier
+        // cancels the drag; the left button must be released before retrying.
+        if phase == .open, flags != .option { return cancel() }
         return []
     }
 
-    public func delayElapsed() -> [Action] {
-        guard phase == .arming, currentModifiers == chord.modifiers else { return [] }
+    public func leftMouseDown(_ flags: Modifiers, at point: CGPoint, otherInputHeld: Bool) -> [Action] {
+        currentModifiers = flags
+        guard phase == .idle, flags == .option, !otherInputHeld else { return [] }
+        anchor = point; center = point; pointer = point; selected = .generic
         phase = .open
         return [.show(anchor)]
+    }
+
+    public func leftMouseUp(_ flags: Modifiers, at point: CGPoint) -> [Action] {
+        currentModifiers = flags
+        guard phase == .open else {
+            phase = .idle
+            return []
+        }
+        guard flags == .option else {
+            let actions = cancel()
+            phase = .idle
+            return actions
+        }
+        // Use the release position even if the last drag event was coalesced.
+        // With no movement, an inward-clamped wheel still sends a normal Ping.
+        if point != pointer { _ = moved(to: point) }
+        phase = .idle
+        return [.dismiss, .commit(selected, anchor)]
     }
 
     public func setWheelCenter(_ point: CGPoint) -> [Action] {
@@ -62,8 +66,8 @@ public final class GestureMachine {
     }
 
     public func cancel() -> [Action] {
-        let hadGesture = phase == .arming || phase == .open
-        phase = currentModifiers.intersection(chord.modifiers).isEmpty ? .idle : .blocked
+        let hadGesture = phase == .open
+        if hadGesture { phase = .blocked }
         selected = .generic
         return hadGesture ? [.hide] : []
     }
