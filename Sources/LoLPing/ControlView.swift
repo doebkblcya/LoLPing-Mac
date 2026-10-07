@@ -70,7 +70,7 @@ struct ControlView: View {
             HStack {
                 Label("触发方式", systemImage: "keyboard").font(.system(size: 12))
                 Spacer()
-                Text("⌥ Option + 左键拖动").font(.system(size: 12)).foregroundStyle(Palette.gold)
+                Text("⌥ Option + 移动鼠标").font(.system(size: 12)).foregroundStyle(Palette.gold)
             }
             HStack(spacing: 28) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -88,9 +88,9 @@ struct ControlView: View {
                     Slider(value: $model.scale, in: 0.75...1.5, step: 0.05).accessibilityLabel("效果大小")
                 }
             }
-            Text("按住 Option → 左键拖动选择 → 松开左键发送")
+            Text("按住 Option → 移动鼠标选择 → 松开 Option 发送，无需按鼠标按钮")
                 .font(.system(size: 10)).foregroundStyle(Palette.secondary)
-            Text("Esc / 右键 / 提前松开 Option 取消。启用后会接管 Option + 左键拖动。")
+            Text("Esc / 右键取消。其他按键或鼠标操作也会取消，并放行原操作。")
                 .font(.system(size: 10)).foregroundStyle(Palette.secondary)
         }.padding(16).card()
     }

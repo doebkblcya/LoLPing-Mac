@@ -16,34 +16,23 @@ public final class GestureMachine {
     private var pointer: CGPoint = .zero
     public init() {}
 
-    public func flagsChanged(_ flags: Modifiers) -> [Action] {
+    public func flagsChanged(_ flags: Modifiers, at point: CGPoint, otherInputHeld: Bool) -> [Action] {
         currentModifiers = flags
-        // Option alone does nothing. Releasing it or adding another modifier
-        // cancels the drag; the left button must be released before retrying.
-        if phase == .open, flags != .option { return cancel() }
-        return []
-    }
-
-    public func leftMouseDown(_ flags: Modifiers, at point: CGPoint, otherInputHeld: Bool) -> [Action] {
-        currentModifiers = flags
-        guard phase == .idle, flags == .option, !otherInputHeld else { return [] }
-        anchor = point; center = point; pointer = point; selected = .generic
-        phase = .open
-        return [.show(anchor)]
-    }
-
-    public func leftMouseUp(_ flags: Modifiers, at point: CGPoint) -> [Action] {
-        currentModifiers = flags
-        guard phase == .open else {
-            phase = .idle
+        if phase == .blocked {
+            if !flags.contains(.option) { phase = .idle }
             return []
         }
-        guard flags == .option else {
-            let actions = cancel()
-            phase = .idle
-            return actions
+        if phase == .idle {
+            guard flags.contains(.option) else { return [] }
+            guard flags == .option, !otherInputHeld else { phase = .blocked; return [] }
+            anchor = point; center = point; pointer = point; selected = .generic
+            phase = .open
+            return [.show(anchor)]
         }
-        // Use the release position even if the last drag event was coalesced.
+        // Extra modifiers belong to another shortcut and must never commit.
+        if !flags.subtracting(.option).isEmpty { return cancel() }
+        guard !flags.contains(.option) else { return [] }
+        // Use the release position even if the last move event was coalesced.
         // With no movement, an inward-clamped wheel still sends a normal Ping.
         if point != pointer { _ = moved(to: point) }
         phase = .idle
@@ -67,7 +56,7 @@ public final class GestureMachine {
 
     public func cancel() -> [Action] {
         let hadGesture = phase == .open
-        if hadGesture { phase = .blocked }
+        if hadGesture { phase = currentModifiers.contains(.option) ? .blocked : .idle }
         selected = .generic
         return hadGesture ? [.hide] : []
     }

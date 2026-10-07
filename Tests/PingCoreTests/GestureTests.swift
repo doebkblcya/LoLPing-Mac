@@ -17,7 +17,7 @@ final class GestureTests {
 
     func open(_ machine: GestureMachine, at point: CGPoint? = nil) {
         let point = point ?? anchor
-        XCTAssertEqual(machine.leftMouseDown(.option, at: point, otherInputHeld: false), [.show(point)])
+        XCTAssertEqual(machine.flagsChanged(.option, at: point, otherInputHeld: false), [.show(point)])
     }
     func testEightDirectionsAndCentralDeadZone() {
         let vectors: [CGPoint] = [.init(x: 0,y: 100), .init(x: 100,y: 100), .init(x: 100,y: 0), .init(x: 100,y: -100),
@@ -28,85 +28,89 @@ final class GestureTests {
         XCTAssertEqual(WheelGeometry.selection(at: CGPoint(x: 66, y: 0), center: .zero, deadZone: WheelGeometry.centerRadius), .generic)
         XCTAssertEqual(WheelGeometry.selection(at: CGPoint(x: 67, y: 0), center: .zero, deadZone: WheelGeometry.centerRadius), .onMyWay)
     }
-    func testOptionAloneAndUnmodifiedClickDoNothing() {
+    func testOptionPressOpensAndReleaseSendsGeneric() {
         let machine = GestureMachine()
-        XCTAssertEqual(machine.flagsChanged(.option), [])
+        XCTAssertEqual(machine.flagsChanged([], at: anchor, otherInputHeld: false), [])
         XCTAssertEqual(machine.moved(to: CGPoint(x: 500, y: 400)), [])
-        XCTAssertEqual(machine.phase, .idle)
-        XCTAssertEqual(machine.flagsChanged([]), [])
-        XCTAssertEqual(machine.leftMouseDown([], at: anchor, otherInputHeld: false), [])
-        XCTAssertEqual(machine.leftMouseUp([], at: anchor), [])
+        open(machine)
+        XCTAssertEqual(machine.phase, .open)
+        XCTAssertEqual(machine.flagsChanged(.option, at: anchor, otherInputHeld: false), [])
+        XCTAssertEqual(machine.flagsChanged([], at: anchor, otherInputHeld: false), [.dismiss, .commit(.generic, anchor)])
     }
     func testReleaseCommitsExactlyOnceAtOriginalAnchor() {
         let machine = GestureMachine(); open(machine)
         let release = CGPoint(x: 500, y: 400)
         XCTAssertEqual(machine.moved(to: release), [.hover(.missing, angle: -.pi/2)])
-        XCTAssertEqual(machine.leftMouseUp(.option, at: release), [.dismiss, .commit(.missing, anchor)])
-        XCTAssertEqual(machine.leftMouseUp(.option, at: release), [])
-        XCTAssertEqual(machine.flagsChanged([]), [])
+        XCTAssertEqual(machine.flagsChanged([], at: release, otherInputHeld: false), [.dismiss, .commit(.missing, anchor)])
+        XCTAssertEqual(machine.flagsChanged([], at: release, otherInputHeld: false), [])
+        XCTAssertEqual(machine.flagsChanged([], at: anchor, otherInputHeld: false), [])
         XCTAssertEqual(machine.phase, .idle)
     }
     func testReleaseUsesLatestPosition() {
         let machine = GestureMachine(); open(machine)
         _ = machine.moved(to: CGPoint(x: 600, y: 500))
-        XCTAssertEqual(machine.leftMouseUp(.option, at: CGPoint(x: 500, y: 400)), [.dismiss, .commit(.missing, anchor)])
+        XCTAssertEqual(machine.flagsChanged([], at: CGPoint(x: 500, y: 400), otherInputHeld: false), [.dismiss, .commit(.missing, anchor)])
     }
-    func testOptionReleaseCancelsWithoutCommit() {
+    func testCancelledGestureDoesNotCommit() {
         let machine = GestureMachine(); open(machine)
-        XCTAssertEqual(machine.flagsChanged([]), [.hide])
+        XCTAssertEqual(machine.cancel(), [.hide])
         XCTAssertEqual(machine.phase, .blocked)
-        XCTAssertEqual(machine.flagsChanged(.option), [])
+        XCTAssertEqual(machine.flagsChanged(.option, at: anchor, otherInputHeld: false), [])
         XCTAssertEqual(machine.moved(to: CGPoint(x: 500, y: 400)), [])
-        XCTAssertEqual(machine.leftMouseDown(.option, at: anchor, otherInputHeld: false), [])
-        XCTAssertEqual(machine.leftMouseUp(.option, at: anchor), [])
-        open(machine)
-        // A release lacking Option must cancel even without a flagsChanged event.
-        XCTAssertEqual(machine.leftMouseUp([], at: anchor), [.hide])
+        XCTAssertEqual(machine.flagsChanged([], at: anchor, otherInputHeld: false), [])
         XCTAssertEqual(machine.phase, .idle)
+        open(machine)
     }
-    func testRepeatedDragsCanKeepOptionHeld() {
+    func testRepeatedOptionPresses() {
         let machine = GestureMachine()
         for _ in 0..<3 {
             open(machine)
-            XCTAssertEqual(machine.leftMouseUp(.option, at: anchor), [.dismiss, .commit(.generic, anchor)])
+            XCTAssertEqual(machine.flagsChanged(.option, at: anchor, otherInputHeld: false), [])
+            XCTAssertEqual(machine.flagsChanged([], at: anchor, otherInputHeld: false), [.dismiss, .commit(.generic, anchor)])
             XCTAssertEqual(machine.phase, .idle)
         }
     }
-    func testCancellationRequiresLeftRelease() {
+    func testCancellationRequiresOptionRelease() {
         let machine = GestureMachine(); open(machine)
         XCTAssertEqual(machine.cancel(), [.hide])
         XCTAssertEqual(machine.cancel(), [])
-        XCTAssertEqual(machine.flagsChanged([]), [])
-        XCTAssertEqual(machine.flagsChanged(.option), [])
-        XCTAssertEqual(machine.leftMouseDown(.option, at: anchor, otherInputHeld: false), [])
-        XCTAssertEqual(machine.leftMouseUp(.option, at: anchor), [])
+        XCTAssertEqual(machine.flagsChanged(.option, at: anchor, otherInputHeld: false), [])
+        XCTAssertEqual(machine.flagsChanged([.option, .shift], at: anchor, otherInputHeld: false), [])
+        XCTAssertEqual(machine.flagsChanged(.option, at: anchor, otherInputHeld: false), [])
+        XCTAssertEqual(machine.flagsChanged([], at: anchor, otherInputHeld: false), [])
         open(machine)
     }
     func testExtraModifiersDoNotTriggerAndCancelAnOpenWheel() {
         for extra: Modifiers in [.control, .command, .shift] {
             let machine = GestureMachine()
-            XCTAssertEqual(machine.leftMouseDown([.option, extra], at: anchor, otherInputHeld: false), [])
+            XCTAssertEqual(machine.flagsChanged([.option, extra], at: anchor, otherInputHeld: false), [])
+            XCTAssertEqual(machine.flagsChanged(.option, at: anchor, otherInputHeld: false), [])
+            XCTAssertEqual(machine.flagsChanged([], at: anchor, otherInputHeld: false), [])
             open(machine)
-            XCTAssertEqual(machine.flagsChanged([.option, extra]), [.hide])
-            XCTAssertEqual(machine.leftMouseUp(.option, at: anchor), [])
+            XCTAssertEqual(machine.flagsChanged([.option, extra], at: anchor, otherInputHeld: false), [.hide])
+            XCTAssertEqual(machine.flagsChanged([], at: anchor, otherInputHeld: false), [])
+            open(machine)
+            // Releasing Option while another modifier is down must cancel.
+            XCTAssertEqual(machine.flagsChanged(extra, at: anchor, otherInputHeld: false), [.hide])
         }
     }
     func testExistingInputDoesNotTrigger() {
         let machine = GestureMachine()
-        XCTAssertEqual(machine.leftMouseDown(.option, at: anchor, otherInputHeld: true), [])
-        XCTAssertEqual(machine.phase, .idle)
-        // Enabling while the left button is down cannot take over an existing drag.
+        XCTAssertEqual(machine.flagsChanged(.option, at: anchor, otherInputHeld: true), [])
+        XCTAssertEqual(machine.phase, .blocked)
+        XCTAssertEqual(machine.flagsChanged(.option, at: anchor, otherInputHeld: false), [])
+        XCTAssertEqual(machine.flagsChanged([], at: anchor, otherInputHeld: false), [])
+        // Enabling while Option is held must wait for a fresh press.
         machine.reset(blockUntilRelease: true)
-        XCTAssertEqual(machine.flagsChanged(.option), [])
+        XCTAssertEqual(machine.flagsChanged(.option, at: anchor, otherInputHeld: false), [])
         XCTAssertEqual(machine.moved(to: anchor), [])
-        XCTAssertEqual(machine.leftMouseDown(.option, at: anchor, otherInputHeld: false), [])
-        XCTAssertEqual(machine.leftMouseUp(.option, at: anchor), [])
+        XCTAssertEqual(machine.flagsChanged([], at: anchor, otherInputHeld: false), [])
         open(machine)
     }
     func testResetCannotCommit() {
         let machine = GestureMachine(); open(machine)
         machine.reset()
-        XCTAssertEqual(machine.leftMouseUp(.option, at: anchor), [])
+        XCTAssertEqual(machine.flagsChanged([], at: anchor, otherInputHeld: false), [])
         XCTAssertEqual(machine.phase, .idle)
     }
     func testEdgeClampingPreservesActualPingLocation() {
@@ -116,13 +120,13 @@ final class GestureTests {
         XCTAssertEqual(center, CGPoint(x: -1770, y: 930))
         let machine = GestureMachine(); open(machine, at: edge)
         XCTAssertEqual(machine.setWheelCenter(center), [])
-        // No dragging at an edge still produces the ordinary Ping.
-        XCTAssertEqual(machine.leftMouseUp(.option, at: edge), [.dismiss, .commit(.generic, edge)])
+        // No movement at an edge still produces the ordinary Ping.
+        XCTAssertEqual(machine.flagsChanged([], at: edge, otherInputHeld: false), [.dismiss, .commit(.generic, edge)])
         open(machine, at: edge)
         _ = machine.setWheelCenter(center)
         let release = CGPoint(x: center.x+90, y: center.y)
         _ = machine.moved(to: release)
-        XCTAssertEqual(machine.leftMouseUp(.option, at: release), [.dismiss, .commit(.onMyWay, edge)])
+        XCTAssertEqual(machine.flagsChanged([], at: release, otherInputHeld: false), [.dismiss, .commit(.onMyWay, edge)])
     }
     func testContinuousDirectionAndCenterReset() {
         let machine = GestureMachine(); open(machine)
@@ -132,7 +136,7 @@ final class GestureTests {
         XCTAssertEqual(machine.selected, .retreat)
         let center = CGPoint(x: 600, y: 466)
         XCTAssertEqual(machine.moved(to: center), [.hover(.generic, angle: nil)])
-        XCTAssertEqual(machine.leftMouseUp(.option, at: center), [.dismiss, .commit(.generic, anchor)])
+        XCTAssertEqual(machine.flagsChanged([], at: center, otherInputHeld: false), [.dismiss, .commit(.generic, anchor)])
         XCTAssertEqual(machine.moved(to: first), [])
     }
     func testScaledCenterMatchesVisualCircle() {
@@ -150,12 +154,12 @@ enum Checks {
         let test = GestureTests()
         let scenarios: [(String, () -> Void)] = [
             ("八向选择与中央区域", test.testEightDirectionsAndCentralDeadZone),
-            ("Option 单键与普通点击不触发", test.testOptionAloneAndUnmodifiedClickDoNothing),
-            ("左键释放单次发送及原始落点", test.testReleaseCommitsExactlyOnceAtOriginalAnchor),
-            ("松开左键使用最新位置", test.testReleaseUsesLatestPosition),
-            ("提前松开 Option 取消", test.testOptionReleaseCancelsWithoutCommit),
-            ("保持 Option 连续拖动", test.testRepeatedDragsCanKeepOptionHeld),
-            ("取消后必须松开左键", test.testCancellationRequiresLeftRelease),
+            ("Option 呼出与原地发送普通信号", test.testOptionPressOpensAndReleaseSendsGeneric),
+            ("Option 释放单次发送及原始落点", test.testReleaseCommitsExactlyOnceAtOriginalAnchor),
+            ("松开 Option 使用最新位置", test.testReleaseUsesLatestPosition),
+            ("取消后松开 Option 不发送", test.testCancelledGestureDoesNotCommit),
+            ("重复按住 Option 触发", test.testRepeatedOptionPresses),
+            ("取消后必须松开 Option", test.testCancellationRequiresOptionRelease),
             ("额外修饰键保护", test.testExtraModifiersDoNotTriggerAndCancelAnOpenWheel),
             ("现有拖动或按键保护", test.testExistingInputDoesNotTrigger),
             ("关闭后不再提交", test.testResetCannotCommit),

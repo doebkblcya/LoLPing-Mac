@@ -14,7 +14,7 @@ cat > "$STAGING/安装说明.txt" <<'INSTALL'
 先从菜单栏退出旧版 LoLPing，再将 LoLPing.app 拖入 Applications，替换旧版。
 从「应用程序」打开 LoLPing，开启「启用 Ping」。
 若辅助功能授权失效，在系统设置 → 隐私与安全性 → 辅助功能中重新添加并允许新版 LoLPing。
-按住 Option（⌥）并左键拖动选择，松开左键发送；Esc、右键或提前松开 Option 取消。
+按住 Option（⌥），直接移动鼠标选择，松开 Option 发送，无需按鼠标按钮；Esc 或右键取消。
 安装完成后可弹出此磁盘映像。
 INSTALL
 hdiutil create -volname LoLPing -srcfolder "$STAGING" -format UDZO -ov "$DMG"

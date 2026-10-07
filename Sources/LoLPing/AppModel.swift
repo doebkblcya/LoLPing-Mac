@@ -72,7 +72,7 @@ final class AppModel: ObservableObject {
             isEnabled = true; awaitingPermission = false
             permissionTimer?.invalidate(); permissionTimer = nil
             defaults.set(true, forKey: "enabled")
-            message = "已就绪。按住 Option（⌥）并左键拖动，松开左键发送。"
+            message = "已就绪。按住 Option（⌥），移动鼠标选择，松开 Option 发送。"
         } catch {
             isEnabled = false; awaitingPermission = false
             permissionTimer?.invalidate(); permissionTimer = nil

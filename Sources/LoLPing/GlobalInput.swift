@@ -20,7 +20,6 @@ final class GlobalInput {
     private var listening = false
     private var keysDown: Set<Int64> = []
     private var swallowedKeys: Set<Int64> = []
-    private var swallowedLeft = false
     private var swallowedRight = false
     private var recoveryAttempts = 0
 
@@ -34,8 +33,8 @@ final class GlobalInput {
         stop()
         guard Self.isTrusted else { throw StartError.permission }
         machine.deadZone = WheelGeometry.centerRadius*scale
-        machine.reset(blockUntilRelease: CGEventSource.buttonState(.combinedSessionState, button: .left))
-        // A cancelled drag may still be draining its mouse-up after a restart.
+        machine.reset(blockUntilRelease: Self.modifiers(CGEventSource.flagsState(.combinedSessionState)).contains(.option))
+        // A cancelled right click or Esc may still need its matching up event.
         if let tap {
             listening = true
             CGEvent.tapEnable(tap: tap, enable: true)
@@ -67,12 +66,12 @@ final class GlobalInput {
         listening = false
         keysDown.removeAll(); recoveryAttempts = 0
         machine.reset()
-        // If we swallowed a down event, also swallow its remaining drag/up.
-        // Disabling or changing size mid-drag must not leak it to other apps.
+        // Swallowed right-click/Esc down events need their matching up events
+        // even if the user disables Ping or changes size before releasing.
         if !hasSwallowedInput { removeTap() }
     }
 
-    private var hasSwallowedInput: Bool { swallowedLeft || swallowedRight || !swallowedKeys.isEmpty }
+    private var hasSwallowedInput: Bool { swallowedRight || !swallowedKeys.isEmpty }
 
     private func removeTap() {
         if let tap { CGEvent.tapEnable(tap: tap, enable: false); CFMachPortInvalidate(tap) }
@@ -109,7 +108,8 @@ final class GlobalInput {
         if !listening { return drain(type, event) }
         switch type {
         case .flagsChanged:
-            dispatch(machine.flagsChanged(Self.modifiers(event.flags)))
+            let held = NSEvent.pressedMouseButtons != 0 || !keysDown.isEmpty
+            dispatch(machine.flagsChanged(Self.modifiers(event.flags), at: point(event), otherInputHeld: held))
         case .keyDown:
             let key = event.getIntegerValueField(.keyboardEventKeycode)
             keysDown.insert(key)
@@ -122,25 +122,7 @@ final class GlobalInput {
             keysDown.remove(key)
             if swallowedKeys.remove(key) != nil { return true }
         case .mouseMoved:
-            break
-        case .leftMouseDown:
-            if swallowedLeft { return true }
-            let held = (NSEvent.pressedMouseButtons & ~1) != 0 || !keysDown.isEmpty
-            let actions = machine.leftMouseDown(Self.modifiers(event.flags), at: point(event), otherInputHeld: held)
-            swallowedLeft = machine.phase == .open
-            dispatch(actions)
-            return swallowedLeft
-        case .leftMouseDragged:
-            if swallowedLeft {
-                dispatch(machine.flagsChanged(Self.modifiers(event.flags)))
-                dispatch(machine.moved(to: point(event)))
-                return true
-            }
-        case .leftMouseUp:
-            let swallow = swallowedLeft
-            swallowedLeft = false
-            dispatch(machine.leftMouseUp(Self.modifiers(event.flags), at: point(event)))
-            return swallow
+            dispatch(machine.moved(to: point(event)))
         case .rightMouseDown:
             let active = machine.phase == .open
             cancelCurrent()
@@ -149,7 +131,7 @@ final class GlobalInput {
             if swallowedRight { swallowedRight = false; return true }
         case .rightMouseDragged:
             if swallowedRight { return true }
-        case .otherMouseDown, .otherMouseDragged, .scrollWheel:
+        case .leftMouseDown, .leftMouseDragged, .otherMouseDown, .otherMouseDragged, .scrollWheel:
             cancelCurrent()
         default: break
         }
@@ -159,8 +141,6 @@ final class GlobalInput {
     private func drain(_ type: CGEventType, _ event: CGEvent) -> Bool {
         var swallow = false
         switch type {
-        case .leftMouseDown, .leftMouseDragged: swallow = swallowedLeft
-        case .leftMouseUp: swallow = swallowedLeft; swallowedLeft = false
         case .rightMouseDown, .rightMouseDragged: swallow = swallowedRight
         case .rightMouseUp: swallow = swallowedRight; swallowedRight = false
         case .keyDown: swallow = swallowedKeys.contains(event.getIntegerValueField(.keyboardEventKeycode))
