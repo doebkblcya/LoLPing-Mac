@@ -2,21 +2,33 @@
 
 一个原生 Swift / AppKit 菜单栏软件。在 Mac 上按住 Option（⌥），移动鼠标选择英雄联盟风格的信号，松开 Option 发送。无需按鼠标按钮。
 
-## 下载与安装
+## 安装与更新
 
-当前源码版本为 **1.3.0**，采用 Option + 移动鼠标，松开 Option 发送。下面的 v1.1.0 下载链接是旧版，仍使用三键组合；新版可按文末说明本地构建并安装。
+当前版本为 **1.3.0**：**按住 Option（⌥）→ 移动鼠标选择 → 松开 Option 发送**，无需按住鼠标按钮，也不再使用三键组合或 Option + 左键拖动。
 
-**[下载 LoLPing v1.1.0 · Apple Silicon（ZIP）](https://github.com/AllenTHT/LoLPing-Mac/releases/download/v1.1.0/LoLPing-v1.1.0-macOS-arm64.zip)** · [查看最新版本](https://github.com/AllenTHT/LoLPing-Mac/releases/latest)
+- 系统要求：macOS 13 或更新版本；当前构建产物为 Apple Silicon（M 系列芯片）版本。
+- App 内包含图标和音效，安装后离线运行，无需 Xcode、Swift 或其他开发工具。
+- 新版的构建与手势状态机检查已通过；真实全局输入、外接屏和全屏覆盖仍待实测。历史验证与本次检查结果见 [验证记录](VERIFICATION.md)。
 
-- 适用设备：Apple Silicon（M 系列芯片）Mac；当前安装包不支持 Intel Mac。
-- 系统要求：macOS 13 或更新版本。目前仅在 macOS 15.7.3 实测，其他系统版本和外接屏尚未实测。
-- 下载包内包含 App、图标及音效；使用时无需安装 Xcode、Swift 或其他开发工具。
+### 直接安装 App
 
-1. 点击上方下载链接，或在 Releases 页面的 **Assets** 中下载 `LoLPing-v1.1.0-macOS-arm64.zip`。GitHub 自动提供的 `Source code (zip)` 和 `Source code (tar.gz)` 是源码，不是 App 安装包。
-2. 双击 ZIP 解压，将 `LoLPing.app` 拖入「应用程序」文件夹。
-3. 从「应用程序」打开 LoLPing。当前版本使用本地签名，尚未使用 Developer ID 签名及 Apple 公证。如果系统提示无法验证开发者，确认下载来源可信且 App 未被篡改后，在尝试打开后进入 **系统设置 → 隐私与安全性 → 仍要打开**，并确认打开。详见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
-4. 开启「启用 Ping」，按照提示进入 **系统设置 → 隐私与安全性 → 辅助功能**，允许 **LoLPing**；如果应用提示需要重新打开，请退出后重新运行，再开启开关。
-5. 按照下方「使用」说明发送信号。首次安装默认关闭，需要手动开启。
+1. 按文末命令构建，得到 `dist/LoLPing.app`。`.app` 是软件本体，可以直接安装。
+2. 更新前先从旧版的菜单栏菜单中选择「退出 LoLPing」，仅关闭窗口不会退出软件。
+3. 将新版 `LoLPing.app` 拖入「应用程序」文件夹；已有旧版时选择替换。
+4. 从「应用程序」打开新版，开启「启用 Ping」。首次安装默认关闭。
+5. 在 **系统设置 → 隐私与安全性 → 辅助功能** 中允许 LoLPing。如果更新后无法触发，移除旧的授权条目，重新添加「应用程序」中的新版 LoLPing，再退出并重新打开软件。
+
+### 使用 DMG 安装
+
+运行文末的打包命令，得到 `dist/LoLPing-v1.3.0-macOS-arm64.dmg`。`.dmg` 是包含同一个 App 的磁盘映像安装包。
+
+退出旧版后，双击 DMG，将其中的 LoLPing 拖到 **Applications** 入口并替换旧版。安装完成后弹出 DMG，从「应用程序」打开软件，按上面的步骤授权。
+
+当前构建使用本地签名，尚未使用 Developer ID 签名及 Apple 公证。如果系统提示无法验证开发者，确认来源可信后，尝试打开并进入 **系统设置 → 隐私与安全性 → 仍要打开**。详见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
+
+### 原作者旧版下载
+
+[原作者 v1.1.0 · Apple Silicon ZIP](https://github.com/AllenTHT/LoLPing-Mac/releases/download/v1.1.0/LoLPing-v1.1.0-macOS-arm64.zip) 使用 **Control + Option + Command** 三键触发，不包含本仓库的新版交互。本文以下使用说明对应 **1.3.0**。GitHub 自动提供的 `Source code (zip)` 和 `Source code (tar.gz)` 是源码，不是 App 安装包。
 
 ## 使用
 
@@ -63,16 +75,12 @@ dist/LoLPing.app/Contents/MacOS/LoLPing --visual-check "$PWD/Verification/Visual
 
 测试使用独立的 `PingCoreChecks` 程序，因为仅安装 Command Line Tools 的 Mac 不一定带 XCTest；失败时返回非零退出状态。
 
-## 安装本地新版
+## 生成 DMG 安装包
 
-自己使用时，运行 `zsh scripts/build.sh`，退出旧版后将 `dist/LoLPing.app` 拖入「应用程序」，替换旧版，再从「应用程序」打开即可。
-
-需要安装包时，运行：
+需要方便保存或分发的安装包时，运行：
 
 ```sh
 zsh scripts/package_dmg.sh
 ```
 
-脚本会先构建，再生成 `dist/LoLPing-v1.3.0-macOS-arm64.dmg`（文件名按构建机器架构生成）。打开 DMG，将 LoLPing 拖到其中的 Applications 入口，替换旧版，安装后弹出 DMG。DMG 不会额外申请系统权限或写入启动项。
-
-本地构建仍使用本地签名；重新构建可能使旧的辅助功能授权失效。若无法触发，请在辅助功能中移除旧条目，重新添加「应用程序」中的新版 LoLPing，并开启授权。
+脚本会先构建并本地签名 App，再生成 `dist/LoLPing-v1.3.0-macOS-arm64.dmg`，包含 App、Applications 入口和安装说明。文件名按构建机器架构生成；安装步骤见上文。DMG 不会额外申请系统权限或写入启动项。
